@@ -5,10 +5,10 @@ def shopper_id():
 
 def welcome(shopper_name):
     if shopper_name is not None:
-        message1 = f"Welcome to Orinoco's Shopping System, {shopper_name}"
-        print("-" * len(message1))
-        print(message1)
-        print("-" * len(message1))
+        message = f"Welcome to Orinoco's Shopping System, {shopper_name}"
+        print("-" * len(message))
+        print(message)
+        print("-" * len(message))
     else:
         return None
 
@@ -33,6 +33,15 @@ def menu():
         return None
 
 
-def error(error_msg):
-    message = f"Error! {error_msg}."
+def no_orders():
+    message = "No orders placed by this customer"
+    print("-" * len(message))
     print(message)
+    print("-" * len(message))
+
+
+def error(error_msg):
+    message = f"Error! {error_msg}."  # printing error message
+    print("-" * len(message))
+    print(message)
+    print("-" * len(message))

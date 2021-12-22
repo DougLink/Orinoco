@@ -1,20 +1,71 @@
 import sqlite3
 import tui
 from abc import ABC, abstractmethod
+import pandas as pd
 
 
-def id_checker(db):
+def id_checker():
+    db = sqlite3.connect("database\Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
     id_number = tui.shopper_id()  # assigning the return to a variable
-    db.execute("""SELECT shopper_first_name, shopper_surname 
+    c.execute("""SELECT shopper_first_name, shopper_surname 
                 FROM shoppers 
                 WHERE shopper_id = (?)""", (id_number,))  # Query that search for the shopper_id and return their name
-    item = db.fetchone()
+    item = c.fetchone()
+    db.commit()
+    db.close()
     if item is not None:
         name = f"{item[0]} {item[1]}"
         shopper_id.append(id_number)
         return name
     else:
+
         return None
+
+
+def basket_selector():
+    db = sqlite3.connect("database\Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    i = shopper_id[0]
+    c.execute("""SELECT basket_id
+                FROM shopper_baskets
+                WHERE shopper_id = (?)
+                AND DATE(basket_created_date_time) = DATE('now')
+                ORDER BY basket_created_date_time DESC
+                LIMIT 1""", (i,))
+    basket = c.fetchone()
+    if basket is None:
+        c.execute("""INSERT INTO shopper_baskets (shopper_id, basket_created_date_time)
+                    VALUES ((?), DATE('now'))""", (i,))
+        db.commit()
+        db.close()
+    else:
+        db.commit()
+        db.close()
+        return basket
+
+
+def order_history():
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    i = shopper_id
+    pd.set_option("display.max_rows", None, "display.max_columns", None, 'display.width', 2000, "display.max_colwidth", 150)
+    history = pd.read_sql_query("""SELECT so.order_id AS 'OrderID', order_date AS 'Order Date',
+                                product_description AS 'Product Description', seller_name AS 'Seller',
+                                PRINTF("£%.2f", op.price) AS 'Price', op.quantity AS 'Qty',
+                                ordered_product_status AS 'Status'
+                                FROM shopper_orders so
+                                INNER JOIN ordered_products op ON so.order_id = op.order_id
+                                INNER JOIN product_sellers ps ON op.product_id = ps.product_id AND op.seller_id = ps.seller_id
+                                INNER JOIN products p ON ps.product_id = p.product_id
+                                INNER JOIN sellers s ON ps.seller_id = s.seller_id
+                                WHERE so.shopper_id = (?)
+                                ORDER BY order_date DESC""", db, params=i)
+    if history.empty:
+        tui.no_orders()
+    else:
+        history.set_index('OrderID', inplace=True)
+        print(history)
 
 
 #def retrieve_entity():
@@ -128,37 +179,19 @@ shopper_id = []
 
 
 def run():
-    db = sqlite3.connect("database\Orinoco_db")  # connect to database
-    c = db.cursor()  # creating cursor
-    id_number = id_checker(c)
+    id_number = id_checker()
     while True:
         if id_number is None:
+            tui.error("Shopper ID not found")  # calling error function
             break
         else:
             tui.welcome(id_number)
+            while basket_selector() is None:
+                basket_selector()
+            basket_id = basket_selector()[0]
             menu_selection = tui.menu()
-
-###################################
-        # Task 21: Check if the user selected the option for loading data.  If so, then do the following:
-        # - Use the appropriate function in the module tui to display a message to indicate that the data loading
-        # operation has started.
-        # - Load the data (see below).
-        # - Use the appropriate function in the module tui to display a message to indicate that the data loading
-        # operation has completed.
-        #
-        # To load the data, it is recommended that you create and call one or more separate functions that do the
-        # following:
-        # - Use the appropriate function in the module tui to retrieve a file path for the CSV data file.  You
-        # should appropriately handle the case where this is None.
-        # - Read each line from the CSV file and add it to the list 'records'. You should appropriately handle the case
-        # where the file cannot be found
-        # TODO: Your code here
-
             if menu_selection == 1:
-                tui.started("Data loading")
-                file_verification()
-                records_header = records.pop(0)  # popping out the header of the CSV file
-                tui.completed("Data loading")
+                order_history()
 
         # Task 22: Check if the user selected the option for processing data.  If so, then do the following:
         # - Use the appropriate function in the module tui to display a message to indicate that the data processing
@@ -354,7 +387,7 @@ def run():
         # break out of the loop
         # TODO: Your code here
 
-            elif menu_selection == 5:
+            elif menu_selection == 7:
                 break
 
         # Task 30: If the user selected an invalid option then use the appropriate function of the module tui to
