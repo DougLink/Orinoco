@@ -1,11 +1,10 @@
 import sqlite3
 import tui
-from abc import ABC, abstractmethod
 import pandas as pd
 
 
 def id_checker():
-    db = sqlite3.connect("database\Orinoco_db")  # connect to database
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
     c = db.cursor()  # creating cursor
     id_number = tui.shopper_id()  # assigning the return to a variable
     c.execute("""SELECT shopper_first_name, shopper_surname 
@@ -24,7 +23,7 @@ def id_checker():
 
 
 def basket_selector():
-    db = sqlite3.connect("database\Orinoco_db")  # connect to database
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
     c = db.cursor()  # creating cursor
     i = shopper_id[0]
     c.execute("""SELECT basket_id
@@ -33,15 +32,23 @@ def basket_selector():
                 AND DATE(basket_created_date_time) = DATE('now')
                 ORDER BY basket_created_date_time DESC
                 LIMIT 1""", (i,))
-    basket = c.fetchone()
-    if basket is None:
-        c.execute("""INSERT INTO shopper_baskets (shopper_id, basket_created_date_time)
-                    VALUES ((?), DATE('now'))""", (i,))
+    basket_tuple = c.fetchone()
+    if basket_tuple is None:
+        db = sqlite3.connect("database/Orinoco_db")  # connect to database
+        c = db.cursor()  # creating cursor
+        i = shopper_id[0]
+        c.execute("""SELECT seq FROM SQLITE_SEQUENCE WHERE name='shopper_baskets'""")
+        basket_tuple = c.fetchone()
+        basket = basket_tuple[0] + 1
+        c.execute("""INSERT INTO shopper_baskets (basket_id, shopper_id, basket_created_date_time)
+                    VALUES ((?), (?), DATETIME('now'))""", (basket, i,))
         db.commit()
         db.close()
+        return basket
     else:
         db.commit()
         db.close()
+        basket = basket_tuple[0]
         return basket
 
 
@@ -49,7 +56,8 @@ def order_history():
     db = sqlite3.connect("database/Orinoco_db")  # connect to database
     c = db.cursor()  # creating cursor
     i = shopper_id
-    pd.set_option("display.max_rows", None, "display.max_columns", None, 'display.width', 2000, "display.max_colwidth", 150)
+    pd.set_option("display.max_rows", None, "display.max_columns", None, "display.width", 2000, "display.max_colwidth",
+                  150)
     history = pd.read_sql_query("""SELECT so.order_id AS 'OrderID', order_date AS 'Order Date',
                                 product_description AS 'Product Description', seller_name AS 'Seller',
                                 PRINTF("£%.2f", op.price) AS 'Price', op.quantity AS 'Qty',
@@ -61,6 +69,8 @@ def order_history():
                                 INNER JOIN sellers s ON ps.seller_id = s.seller_id
                                 WHERE so.shopper_id = (?)
                                 ORDER BY order_date DESC""", db, params=i)
+    db.commit()
+    db.close()
     if history.empty:
         tui.no_orders()
     else:
@@ -68,7 +78,162 @@ def order_history():
         print(history)
 
 
-#def retrieve_entity():
+def fetch_product_categories():
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""SELECT category_id, category_description FROM categories ORDER BY category_description""")
+    result = c.fetchall()
+    db.commit()
+    db.close()
+    return result
+
+
+def fetch_products(category):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""SELECT product_id, product_description
+                FROM products p
+                INNER JOIN categories c ON p.category_id = c.category_id
+                WHERE p.category_id = (?) AND product_status = 'Available'
+                ORDER BY product_description""", (category,))
+    result = c.fetchall()
+    db.commit()
+    db.close()
+    return result
+
+
+def fetch_sellers(product):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""SELECT ps.seller_id, s.seller_name || ' (' || PRINTF("£%.2f", ps.price) || ')'
+                FROM products p
+                INNER JOIN product_sellers ps ON p.product_id = ps.product_id
+                INNER JOIN sellers s ON ps.seller_id = s.seller_id
+                WHERE p.product_id = (?)
+                ORDER BY s.seller_name""", (product,))
+    result = c.fetchall()
+    db.commit()
+    db.close()
+    return result
+
+
+def fetch_price(product, seller):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""SELECT price FROM product_sellers WHERE product_id = (?) AND seller_id = (?)""", (product, seller,))
+    result = c.fetchall()[0]
+    db.commit()
+    db.close()
+    return result
+
+
+def add_item(basket, prod, seller, qty, price):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""INSERT INTO basket_contents (basket_id, product_id, seller_id, quantity, price)
+                VALUES ((?), (?), (?), (?), (?))""", (basket, prod, seller, qty, price,))
+    db.commit()
+    db.close()
+
+
+def display_basket(basket_id):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    pd.set_option("display.max_rows", None, "display.max_columns", None, "display.width", 2000, "display.max_colwidth",
+                  150)
+    result = pd.read_sql_query("""SELECT product_description AS 'Product Description',
+                                seller_name AS 'Seller Name', SUM(bc.quantity) AS 'Qty',
+                                PRINTF("£%.2f", bc.price) AS 'Price', PRINTF("£%.2f", (bc.price*SUM(bc.quantity))) AS 'Total'
+                                FROM basket_contents bc
+                                INNER JOIN product_sellers ps ON bc.product_id = ps.product_id AND bc.seller_id = ps.seller_id
+                                INNER JOIN sellers s ON ps.seller_id = s.seller_id
+                                INNER JOIN products p ON ps.product_id = p.product_id
+                                WHERE bc.basket_id = (?)
+                                GROUP BY product_description, seller_name
+                                ORDER BY product_description DESC""", db, params=basket_id)
+    db.commit()
+    db.close()
+    if result.empty:
+        tui.empty_basket()
+        return None
+    else:
+        result.rename_axis('Basket Item', inplace=True)
+        result.index = result.index + 1
+        tui.basket_title()
+        print(result)
+        return result
+
+
+def basket_data(basket_id):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""SELECT product_description, bc.product_id, bc.seller_id, seller_name
+                FROM basket_contents bc
+                INNER JOIN product_sellers ps ON bc.product_id = ps.product_id AND bc.seller_id = ps.seller_id
+                INNER JOIN sellers s ON ps.seller_id = s.seller_id
+                INNER JOIN products p ON ps.product_id = p.product_id
+                WHERE bc.basket_id = (?)
+                GROUP BY product_description, seller_name
+                ORDER BY product_description DESC""", (basket_id,))
+    result = c.fetchall()
+    db.commit()
+    db.close()
+    return result
+
+
+def change_amount(item, basket):
+    qty = item[0]
+    product = item[1]
+    seller = item[2]
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""UPDATE basket_contents
+                SET quantity = (?)
+                WHERE product_id = (?) AND seller_id = (?) AND basket_id = (?)""", (qty, product, seller, basket,))
+    db.commit()
+    db.close()
+
+
+def delete_item(item, basket):
+    product = item[0]
+    seller = item[1]
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""DELETE FROM basket_contents
+                WHERE product_id = (?) AND seller_id = (?) AND basket_id = (?)""",
+              (product, seller, basket,))
+    db.commit()
+    db.close()
+
+
+def delete_basket(basket):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""DELETE FROM shopper_baskets
+                WHERE basket_id = (?)""", (basket,))
+    db.commit()
+    db.close()
+
+
+def checkout(basket):
+    db = sqlite3.connect("database/Orinoco_db")  # connect to database
+    c = db.cursor()  # creating cursor
+    c.execute("""INSERT INTO shopper_orders (shopper_id, order_date, order_status)
+                    VALUES ((?), DATE('now'), 'Placed')""", (shopper_id[0],))
+    db.commit()
+    c.execute("""SELECT seq FROM SQLITE_SEQUENCE WHERE name='shopper_orders'""")
+    order = c.fetchone()[0]
+    c.execute("""INSERT INTO ordered_products(order_id, product_id, seller_id, quantity, price, ordered_product_status)
+                SELECT (?), product_id, seller_id, quantity, price, 'Placed'
+                FROM basket_contents
+                WHERE basket_id = (?)""", (order, basket,))
+    c.execute("""DELETE FROM shopper_baskets WHERE basket_id = (?)""", (basket,))
+    c.execute("""DELETE FROM basket_contents WHERE basket_id = (?)""", (basket,))
+    db.commit()
+    db.close()
+
+
+# def retrieve_entity():
 #    entity = tui.entity_name()
 #    records_entities = []
 #    for element in records:
@@ -86,7 +251,7 @@ def order_history():
 #    tui.list_entity(result[0])  # handling the fact that was created a list of lists
 
 
-#def retrieve_entity_det():
+# def retrieve_entity_det():
 #    details = tui.entity_details()
 #    records_entities = []
 #    for element in records:
@@ -107,7 +272,7 @@ def order_history():
 #    tui.list_entity(data, selected_rows)
 
 
-#def categorisation_type():
+# def categorisation_type():
 #    type_category = {"Planets": [], "Non-planets": []}  # creating the dictionary
 #    for element in records:
 #        if element[1] == "TRUE":  # checking the condition
@@ -117,7 +282,7 @@ def order_history():
 #    return type_category
 
 
-#def categorisation_gravity():
+# def categorisation_gravity():
 #    gravity_category = {"Low": [], "Medium": [], "High": []}
 #    ranges = tui.gravity_range()
 #    for element in records:
@@ -130,7 +295,7 @@ def order_history():
 #   return gravity_category
 
 
-#def summarise():
+# def summarise():
 #    orbit_summary = {}
 #    orbit_planets = tui.orbits()
 #    for planet in orbit_planets:
@@ -141,38 +306,6 @@ def order_history():
 #        if element[21] in orbit_planets and float(element[10]) >= 100:
 #            orbit_summary[element[21]]["Large"].append(element[0])
 #    return orbit_summary
-
-
-#class AbstractWriter(ABC):  # abstract class
-#    def __init__(self, data):  # initializing class
-#        self.data = data  # creating parameter
-
-#    def sorting_data(self):  # method to sort out planets and non-planets in alphabetical order
-#        planets = []
-#        non_planets = []
-#        for element in self.data:
-#            if element[1] == "TRUE":
-#                planets.append(element)
-#            if element[1] == "FALSE":
-#                non_planets.append(element)
-#        planets.sort()  # sorting in alphabetical order
-#        non_planets.sort()
-#        sorted_entities = {"Planets": planets, "Non-planets": non_planets}
-#        return sorted_entities
-
-#    @abstractmethod  # abstract method to return the sorted data
-#    def saving_data(self):
-#        return self.sorting_data()
-
-
-#class ConcreteWriter(AbstractWriter):  # concrete class
-#    def __init__(self, data):  # initializing class
-#        super().__init__(data)  # calling out the parent class
-#
-#    def saving_data(self):  # method that overwrites the parent and uses the return
-#        file = super().saving_data()
-#        with open("records.txt", 'w') as outfile:  # creating a txt file
-#            json.dump(file, outfile)  # writing the data in JSON format
 
 
 shopper_id = []
@@ -186,213 +319,46 @@ def run():
             break
         else:
             tui.welcome(id_number)
-            while basket_selector() is None:
-                basket_selector()
-            basket_id = basket_selector()[0]
+            basket_id = basket_selector()
             menu_selection = tui.menu()
             if menu_selection == 1:
                 order_history()
-
-        # Task 22: Check if the user selected the option for processing data.  If so, then do the following:
-        # - Use the appropriate function in the module tui to display a message to indicate that the data processing
-        # operation has started.
-        # - Process the data (see below).
-        # - Use the appropriate function in the module tui to display a message to indicate that the data processing
-        # operation has completed.
-        #
-        # To process the data, it is recommended that you create and call one or more separate functions that do the
-        # following:
-        # - Use the appropriate function in the module tui to display a menu of options for processing the data.
-        # - Check what option has been selected
-        #
-        #   - If the user selected the option to retrieve an entity then
-        #       - Use the appropriate function in the module tui to indicate that the entity retrieval process
-        #       has started.
-        #       - Use the appropriate function in the module tui to retrieve the entity name
-        #       - Find the record for the specified entity in records.  You should appropriately handle the case
-        #       where the entity cannot be found.
-        #       - Use the appropriate function in the module tui to list the entity
-        #       - Use the appropriate function in the module tui to indicate that the entity retrieval process has
-        #       completed.
-        #
-        #   - If the user selected the option to retrieve an entity's details then
-        #       - Use the appropriate function in the module tui to indicate that the entity details retrieval
-        #       process has started.
-        #       - Use the appropriate function in the module tui to retrieve the entity details
-        #       - Find the record for the specified entity details in records.  You should appropriately handle the
-        #       case where the entity cannot be found.
-        #       - Use the appropriate function in the module tui to list the entity
-        #       - Use the appropriate function in the module tui to indicate that the entity details retrieval
-        #       process has completed.
-        #
-        #   - If the user selected the option to categorise entities by their type then
-        #       - Use the appropriate function in the module tui to indicate that the entity type categorisation
-        #       process has started.
-        #       - Iterate through each record in records and assemble a dictionary containing a list of planets
-        #       and a list of non-planets.
-        #       - Use the appropriate function in the module tui to list the categories.
-        #       - Use the appropriate function in the module tui to indicate that the entity type categorisation
-        #       process has completed.
-        #
-        #   - If the user selected the option to categorise entities by their gravity then
-        #       - Use the appropriate function in the module tui to indicate that the categorisation by entity gravity
-        #       process has started.
-        #       - Use the appropriate function in the module tui to retrieve a gravity range
-        #       - Iterate through each record in records and assemble a dictionary containing lists of entities
-        #       grouped into low (below lower limit), medium and high (above upper limit) gravity categories.
-        #       - Use the appropriate function in the module tui to list the categories.
-        #       - Use the appropriate function in the module tui to indicate that the categorisation by entity gravity
-        #       process has completed.
-        #
-        #   - If the user selected the option to generate an orbit summary then
-        #       - Use the appropriate function in the module tui to indicate that the orbit summary process has
-        #       started.
-        #       - Use the appropriate function in the module tui to retrieve a list of orbited planets.
-        #       - Iterate through each record in records and find entities that orbit a planet in the list of
-        #       orbited planets.  Assemble the found entities into a nested dictionary such that each entity can be
-        #       accessed as follows:
-        #           name_of_dict[planet_orbited][category]
-        #       where category is "small" if the mean radius of the entity is below 100 and "large" otherwise.
-        #       - Use the appropriate function in the module tui to list the categories.
-        #       - Use the appropriate function in the module tui to indicate that the orbit summary process has
-        #       completed.
-        # TODO: Your code here
-
             elif menu_selection == 2:
-                tui.started("Data processing")
-                process_selection = tui.process_type()
-                if process_selection == 1:
-                    tui.started("Retrieve entity")
-                    retrieve_entity()
-                    tui.completed("Retrieve entity")
-
-                elif process_selection == 2:
-                    tui.started("Retrieve entity's details")
-                    retrieve_entity_det()
-                    tui.completed("Retrieve entity details")
-
-                elif process_selection == 3:
-                    tui.started("Categorise entities by type")
-                    tui.list_categories(categorisation_type())
-                    tui.completed("Categorise entities by type")
-
-                elif process_selection == 4:
-                    tui.started("Categorise entities by gravity")
-                    tui.list_categories(categorisation_gravity())
-                    tui.completed("Categorise entities by gravity")
-
-                elif process_selection == 5:
-                    tui.started("Summarise entities by orbit")
-                    tui.list_categories(summarise())
-                    tui.completed("Summarise entities by orbit")
-
-                tui.completed("Data processing")
-
-        # Task 23: Check if the user selected the option for visualising data.  If so, then do the following:
-        # - Use the appropriate function in the module tui to indicate that the data visualisation operation
-        # has started.
-        # - Visualise the data (see below).
-        # - Use the appropriate function in the module tui to display a message to indicate that the data visualisation
-        # operation has completed.
-        #
-        # To visualise the data, it is recommended that you create and call one or more separate functions that do the
-        # following:
-        # - Use the appropriate function in the module tui to retrieve the type of visualisation to display.
-        # - Check what option has been selected
-        #
-        #   - if the user selected the option to visualise the entity type then
-        #       - Use the appropriate function in the module tui to indicate that the entity type visualisation
-        #       process has started.
-        #       - Use your code from earlier to assemble a dictionary containing a list of planets and a list of
-        #       non-planets.
-        #       - Use the appropriate function in the module visual to display a pie chart for the number of planets
-        #       and non-planets
-        #       - Use the appropriate function in the module tui to indicate that the entity type visualisation
-        #       process has completed.
-        #
-        #   - if the user selected the option to visualise the entity gravity then
-        #       - Use the appropriate function in the module tui to indicate that the entity gravity visualisation
-        #       process has started.
-        #       - Use your code from earlier to assemble a dictionary containing lists of entities grouped into
-        #       low (below lower limit), medium and high (above upper limit) gravity categories.
-        #       - Use the appropriate function in the module visual to display a bar chart for the gravities
-        #       - Use the appropriate function in the module tui to indicate that the entity gravity visualisation
-        #       process has completed.
-        #
-        #   - if the user selected the option to visualise the orbit summary then
-        #       - Use the appropriate function in the module tui to indicate that the orbit summary visualisation
-        #       process has started.
-        #       - Use your code from earlier to assemble a nested dictionary of orbiting planets.
-        #       - Use the appropriate function in the module visual to display subplots for the orbits
-        #       - Use the appropriate function in the module tui to indicate that the orbit summary visualisation
-        #       process has completed.
-        #
-        #   - if the user selected the option to animate the planet gravities then
-        #       - Use the appropriate function in the module tui to indicate that the gravity animation visualisation
-        #       process has started.
-        #       - Use your code from earlier to assemble a dictionary containing lists of entities grouped into
-        #       low (below lower limit), medium and high (above upper limit) gravity categories.
-        #       - Use the appropriate function in the module visual to animate the gravity.
-        #       - Use the appropriate function in the module tui to indicate that the gravity animation visualisation
-        #       process has completed.
-        # TODO: Your code here
-
+                categories = fetch_product_categories()
+                cat_selected = tui.basket_menu(categories, "Product Categories", "product categories")
+                products = fetch_products(cat_selected)
+                prod_selected = tui.basket_menu(products, "Product", "product")
+                sellers = fetch_sellers(prod_selected)
+                seller_selected = tui.basket_menu(sellers, "Sellers who sell this product", "seller")
+                quantity_selected = tui.prod_quantity()
+                price = fetch_price(prod_selected, seller_selected)[0]
+                basket_id = basket_selector()
+                add_item(basket_id, prod_selected, seller_selected, quantity_selected, price)
             elif menu_selection == 3:
-                tui.started("Data visualising")
-                visualisation_selection = tui.visualise()
-                if visualisation_selection == 1:
-                    tui.started("Visualising entities by type")
-                    visualisation_type = categorisation_type()
-                    vi.entities_pie(visualisation_type)
-                    tui.completed("Visualising entities by type")
-
-                elif visualisation_selection == 2:
-                    tui.started("Visualising entities by gravity")
-                    visualisation_gravity = categorisation_gravity()
-                    vi.entities_bar(visualisation_gravity)
-                    tui.completed("Visualising entities by gravity")
-
-                elif visualisation_selection == 3:
-                    tui.started("Visualising summary of orbits")
-                    visualisation_orbits = summarise()
-                    vi.orbits(visualisation_orbits)
-                    tui.completed("Visualising summary of orbits")
-
-                elif visualisation_selection == 4:
-                    tui.started("Visualising animate gravities")
-                    animation_gravity = categorisation_gravity()
-                    vi.gravity_animation(animation_gravity)
-                    tui.completed("Visualising animate gravities")
-
-                tui.completed("Data visualising")
-
-        # Task 28: Check if the user selected the option for saving data.  If so, then do the following:
-        # - Use the appropriate function in the module tui to indicate that the save data operation has started.
-        # - Save the data (see below)
-        # - Use the appropriate function in the module tui to indicate that the save data operation has completed.
-        #
-        # To save the data, you should demonstrate the application of OOP principles including the concepts of
-        # abstraction and inheritance.  You should create an AbstractWriter class with abstract methods and a concrete
-        # Writer class that inherits from the AbstractWriter class.  You should then use this to write the records to
-        # a JSON file using in the following order: all the planets in alphabetical order followed by non-planets
-        # in alphabetical order.
-        # TODO: Your code here
-
+                display_basket((basket_id,))
             elif menu_selection == 4:
-                tui.started("Data saving")
-                ConcreteWriter(records).saving_data()
-                tui.completed("Data saving")
-
-        # Task 29: Check if the user selected the option for exiting.  If so, then do the following:
-        # break out of the loop
-        # TODO: Your code here
-
+                basket = display_basket((basket_id,))
+                if basket is not None:
+                    changes = tui.change_quantity(basket_data(basket_id))
+                    change_amount(changes, basket_id)
+                    display_basket((basket_id,))
+            elif menu_selection == 5:
+                basket = display_basket((basket_id,))
+                if basket is not None:
+                    item_to_remove = tui.remove_item(basket_data(basket_id))
+                    if item_to_remove is not None:
+                        delete_item(item_to_remove, basket_id)
+                        basket = display_basket((basket_id,))
+                        if basket is None:
+                            delete_basket(basket_id)
+            elif menu_selection == 6:
+                basket = display_basket((basket_id,))
+                if basket is not None:
+                    if tui.checkout_conf() is True:
+                        checkout(basket_id)
+                        tui.checkout_complete()
             elif menu_selection == 7:
                 break
-
-        # Task 30: If the user selected an invalid option then use the appropriate function of the module tui to
-        # display an error message
-        # TODO: Your code here
             else:
                 tui.error("Invalid Entry")
 
