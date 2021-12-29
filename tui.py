@@ -4,13 +4,10 @@ def shopper_id():
 
 
 def welcome(shopper_name):
-    if shopper_name is not None:
-        message = f"Welcome to Orinoco's Shopping System, {shopper_name}"
-        print("-" * len(message))
-        print(message)
-        print("-" * len(message))
-    else:
-        return None
+    message = f"Welcome to Orinoco's Shopping System, {shopper_name}"
+    print("-" * len(message))
+    print(message)
+    print("-" * len(message))
 
 
 def menu():
@@ -22,14 +19,14 @@ def menu():
                6: "Checkout", 7: "Exit"}
 
     for key, value in mn_opts.items():
-        print(f"{key}.  {value}")  # printing the keys and values so the user can replicate the option number
+        print(f"{key}.  {value}")
 
     a = int(input("Type the number of the option:"))  # making sure the user input an integer and is saved as so
 
     if a in mn_opts:  # handling user mistake
         return a
     else:
-        error("Invalid Entry")  # calling the error message
+        error("Invalid Entry")
         return None
 
 
@@ -41,7 +38,7 @@ def no_orders():
 
 
 def error(error_msg):
-    message = f"Error! {error_msg}."  # printing error message
+    message = f"Error! {error_msg}."
     print("-" * len(message))
     print(message)
     print("-" * len(message))
@@ -52,11 +49,11 @@ def basket_menu(options, title, step):
     option_list = []
     print(f"\n{title}\n")
     for option in options:
-        code = option[0]
+        code = option[0]  # separating the id from the description
         desc = option[1]
         print(f"{index}.\t{desc}")
         index += 1
-        option_list.append(code)
+        option_list.append(code)  # populating list with the ids to later return the chosen one
     selected_option = 0
     while selected_option > len(options) or selected_option == 0:
         prompt = f"Enter the number against the {step} you want to choose: "
@@ -94,7 +91,7 @@ def change_quantity(items):
         while new_amount <= 0:
             print("The quantity must be greater than zero")
             new_amount = int(input(prompt))
-        product = items[0][1]
+        product = items[0][1]  # taking the useful information(product and seller) from the list to return later
         seller = items[0][2]
         changes = [new_amount, product, seller]
         return changes
@@ -109,8 +106,8 @@ def change_quantity(items):
         while new_amount <= 0:
             print("The quantity must be greater than zero")
             new_amount = int(input("Enter the new quantity you want to buy: "))
-        selected_item = items[item-1]
-        product = selected_item[1]
+        selected_item = items[item-1]  # taking the selected item from the list
+        product = selected_item[1]  # to later get the useful information and return it
         seller = selected_item[2]
         changes = [new_amount, product, seller]
         return changes
@@ -123,7 +120,7 @@ def remove_item(items):
         answer = str.lower(input(confirmation))
         answers = ["y", "n"]
         while answer not in answers:
-            answer = str.lower(input(confirmation))
+            answer = str.lower(input(confirmation))  # handling possible uppercase
         if answer == "y":
             product = items[0][1]
             seller = items[0][2]
