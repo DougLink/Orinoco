@@ -204,8 +204,8 @@ def delete_basket(basket):
     db.close()
 
 
-def checkout(basket):  # this is the only "complex" query function, its has 4 stages. Creating a new shopper order,
-    db = sqlite3.connect("database/Orinoco_db")   # finding the id that was created, creating order for every product,
+def checkout(basket):  # this is a "complex" query function, its has 4 stages. Creating a new shopper order, finding the
+    db = sqlite3.connect("database/Orinoco_db")   # id that was created, creating order for every product and seller,
     c = db.cursor()                               # and deleting the shopper basket(shopper_baskets and basket_contents)
     c.execute("""INSERT INTO shopper_orders (shopper_id, order_date, order_status)
                     VALUES ((?), DATE('now'), 'Placed')""", (shopper_id[0],))
