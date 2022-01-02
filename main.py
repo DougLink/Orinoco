@@ -126,6 +126,7 @@ def add_item(basket, prod, seller, qty, price):
                 VALUES ((?), (?), (?), (?), (?))""", (basket, prod, seller, qty, price,))
     db.commit()
     db.close()
+    tui.item_added()
 
 
 def display_basket(basket_id):
@@ -133,7 +134,7 @@ def display_basket(basket_id):
     pd.set_option("display.max_rows", None, "display.max_columns", None, "display.width", 2000, "display.max_colwidth", 150)
     result = pd.read_sql_query("""SELECT product_description AS 'Product Description',
                                 seller_name AS 'Seller Name', SUM(bc.quantity) AS 'Qty',
-                                PRINTF("£%.2f", bc.price) AS 'Price', PRINTF("£%.2f", (bc.price*SUM(bc.quantity))) AS 'Total'
+                                PRINTF("£%.2f",bc.price) AS 'Price', PRINTF("£%.2f",bc.price*SUM(bc.quantity)) AS 'Total'
                                 FROM basket_contents bc
                                 INNER JOIN product_sellers ps ON bc.product_id = ps.product_id AND bc.seller_id = ps.seller_id
                                 INNER JOIN sellers s ON ps.seller_id = s.seller_id
@@ -215,6 +216,10 @@ def checkout(basket):  # this is the only "complex" query function, its has 4 st
                 SELECT (?), product_id, seller_id, quantity, price, 'Placed'
                 FROM basket_contents
                 WHERE basket_id = (?)""", (order, basket,))
+    c.execute("""INSERT OR IGNORE INTO seller_orders(order_id, seller_id)
+                    SELECT (?), seller_id
+                    FROM basket_contents
+                    WHERE basket_id = (?)""", (order, basket,))
     c.execute("""DELETE FROM shopper_baskets WHERE basket_id = (?)""", (basket,))
     c.execute("""DELETE FROM basket_contents WHERE basket_id = (?)""", (basket,))
     db.commit()
@@ -269,8 +274,6 @@ def run():
                         tui.checkout_complete()
             elif menu_selection == 7:
                 break
-            else:
-                tui.error("Invalid Entry")
     else:
         tui.error("Shopper ID not found")
 

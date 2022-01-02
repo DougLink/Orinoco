@@ -12,6 +12,7 @@ def welcome(shopper_name):
 
 def menu():
     mn_header = "ORINOCO-SHOPPER MAIN MENU"
+    print("-" * len(mn_header))
     print(mn_header)
     print("-" * len(mn_header))
     mn_opts = {1: "Display your order history", 2: "Add an item to your basket", 3: "View your basket",
@@ -81,6 +82,13 @@ def basket_title():
     title = "Basket Contents"
     print(title)
     print("-" * len(title))
+
+
+def item_added():
+    message = "Item added to your basket"
+    print("-" * len(message))
+    print(message)
+    print("-" * len(message))
 
 
 def change_quantity(items):
